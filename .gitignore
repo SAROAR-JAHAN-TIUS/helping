@@ -1,0 +1,10 @@
+.venv/
+.env
+credentials.json
+token.json
+__pycache__/
+chunks.json
+transcript.json
+meeting_analysis.json
+extracted_events.json
+*.pdf
