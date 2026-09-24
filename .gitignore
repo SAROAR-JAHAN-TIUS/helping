@@ -8,3 +8,6 @@ transcript.json
 meeting_analysis.json
 extracted_events.json
 *.pdf
+.env
+.env.*
+!.env.example

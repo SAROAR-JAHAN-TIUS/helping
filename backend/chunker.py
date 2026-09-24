@@ -18,59 +18,62 @@ def seconds_to_timestamp(seconds):
 
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-
-with open("transcript.json", "r", encoding="utf-8") as file:
-    transcript = json.load(file)
-
-
-# Convert transcript timestamps to seconds
-for item in transcript:
-    item["_start_seconds"] = timestamp_to_seconds(item["start"])
+def create_chunks():
+    with open("transcript.json", "r", encoding="utf-8") as file:
+        transcript = json.load(file)
 
 
-chunks = []
-
-chunk_start = 0
-
-
-while True:
-
-    chunk_end = chunk_start + CHUNK_DURATION.total_seconds()
-
-    current_chunk = [
-        item
-        for item in transcript
-        if chunk_start <= item["_start_seconds"] < chunk_end
-    ]
-
-    if not current_chunk:
-        break
-
-    chunk_text = "\n".join(
-        f"[{item['start']}] {item['speaker']}: {item['text']}"
-        for item in current_chunk
-    )
-
-    chunks.append({
-        "chunk_id": len(chunks) + 1,
-        "start": seconds_to_timestamp(int(chunk_start)),
-        "end": current_chunk[-1]["end"],
-        "text": chunk_text,
-        "entries": current_chunk
-    })
-
-    chunk_start += STEP.total_seconds()
+    # Convert transcript timestamps to seconds
+    for item in transcript:
+        item["_start_seconds"] = timestamp_to_seconds(item["start"])
 
 
-with open("chunks.json", "w", encoding="utf-8") as file:
-    json.dump(chunks, file, indent=4, ensure_ascii=False)
+    chunks = []
+
+    chunk_start = 0
 
 
-print(f"Total chunks: {len(chunks)}")
+    while True:
 
-for chunk in chunks:
-    print(
-        f"Chunk {chunk['chunk_id']}: "
-        f"{chunk['start']} → {chunk['end']} "
-        f"({len(chunk['entries'])} entries)"
-    )
+        chunk_end = chunk_start + CHUNK_DURATION.total_seconds()
+
+        current_chunk = [
+            item
+            for item in transcript
+            if chunk_start <= item["_start_seconds"] < chunk_end
+        ]
+
+        if not current_chunk:
+            break
+
+        chunk_text = "\n".join(
+            f"[{item['start']}] {item['speaker']}: {item['text']}"
+            for item in current_chunk
+        )
+
+        chunks.append({
+            "chunk_id": len(chunks) + 1,
+            "start": seconds_to_timestamp(int(chunk_start)),
+            "end": current_chunk[-1]["end"],
+            "text": chunk_text,
+            "entries": current_chunk
+        })
+
+        chunk_start += STEP.total_seconds()
+
+
+    with open("chunks.json", "w", encoding="utf-8") as file:
+        json.dump(chunks, file, indent=4, ensure_ascii=False)
+
+
+    print(f"Total chunks: {len(chunks)}")
+
+    for chunk in chunks:
+        print(
+            f"Chunk {chunk['chunk_id']}: "
+            f"{chunk['start']} → {chunk['end']} "
+            f"({len(chunk['entries'])} entries)"
+        )
+
+if __name__ == "__main__":
+    create_chunks()        

@@ -2,7 +2,9 @@ import subprocess
 import os 
 import json
 from dotenv import load_dotenv
+import threading
 
+stop_event = threading.Event()
 load_dotenv()
 transcript = []
 
@@ -57,65 +59,82 @@ def on_terminated(client, event: TerminationEvent):
     print("\nAssemblyAI session ended.")
 def on_error(client, error: RealTimeError):
     print(f"\nAssemblyAI error: {error}")
-
-client = RealTimeTranscriber(
-    api_key=API_KEY,
-    options=RealTimeTranscriberOptions(),)    
-
-client.on(RealTimeEvents.Begin, on_begin)
-client.on(RealTimeEvents.Turn, on_turn)
-client.on(RealTimeEvents.Termination, on_terminated)
-client.on(RealTimeEvents.Error, on_error)
-# print(RealTimeParameters.model_fields)
-client.connect(
-    RealTimeParameters(
-        sample_rate=16000,
-        speech_model="universal-3-5-pro",
-        speaker_labels=True,
-        max_speakers=3,
-        language_code="en",
+def start_transcription():
+    stop_event.clear()
+    client = RealTimeTranscriber(
+        api_key=API_KEY,
+        options=RealTimeTranscriberOptions(),
     )
-)
 
-command = [
-    "ffmpeg",
-    "-f", "pulse",
-    "-i", DEVICE,
-    "-f", "s16le",
-    "-ac", "1",
-    "-ar", "16000",
-    "-"
-]
+    client.on(RealTimeEvents.Begin, on_begin)
+    client.on(RealTimeEvents.Turn, on_turn)
+    client.on(RealTimeEvents.Termination, on_terminated)
+    client.on(RealTimeEvents.Error, on_error)
 
-process = subprocess.Popen(
-    command,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.DEVNULL,
-    bufsize=0,
-)
-print("System audio → AssemblyAI")
-print("Play speech/audio now.")
-print("Press Ctrl+C to stop.\n")
+    client.connect(
+        RealTimeParameters(
+            sample_rate=16000,
+            speech_model="universal-3-5-pro",
+            speaker_labels=True,
+            max_speakers=3,
+            language_code="en",
+        )
+    )
 
-try:
-    while True:
+    command = [
+        "ffmpeg",
+        "-f", "pulse",
+        "-i", DEVICE,
+        "-f", "s16le",
+        "-ac", "1",
+        "-ar", "16000",
+        "-"
+    ]
 
-        audio_chunk = process.stdout.read(3200)
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        bufsize=0,
+    )
+    record_command = [
+        "ffmpeg",
+        "-y",
+        "-f", "pulse",
+        "-i", DEVICE,
+        "-c:a", "libopus",
+        "-b:a", "128k",
+        "meeting_recording.webm"
+    ]
 
-        if not audio_chunk:
-            break
-     
-        client.stream(audio_chunk)
+    record_process = subprocess.Popen(
+        record_command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print("System audio → AssemblyAI")
+    print("Play speech/audio now.")
 
-except KeyboardInterrupt:
-    print("\nStopping...")
+    try:
+        while not stop_event.is_set():
+
+            audio_chunk = process.stdout.read(3200)
+
+            if not audio_chunk:
+                break
+
+            client.stream(audio_chunk)
+
+    finally:
+        process.terminate()
+        process.wait()
+
+        client.disconnect(terminate=True)
+        record_process.terminate()
+        record_process.wait()
+
+        print("Disconnected.")
 
 
-finally:
-    process.terminate()
-    process.wait()
-
-    client.disconnect(terminate=True)
-
-    print("Disconnected.")
-
+def stop_transcription():
+    stop_event.set()

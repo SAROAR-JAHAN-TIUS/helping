@@ -1,278 +1,281 @@
-import re 
 import json
-from openai import OpenAI
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+from openai import OpenAI
+from rapidfuzz import fuzz
+
 load_dotenv()
+
 API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
+
 if not API_KEY:
     raise RuntimeError("ASSEMBLYAI_API_KEY is not set.")
+
 client = OpenAI(
     api_key=API_KEY,
     base_url="https://llm-gateway.assemblyai.com/v1"
 )
-with open("meeting_analysis.json", "r", encoding="utf-8") as f:
-    meeting_analysis = json.load(f)
-STOP_WORDS = {
-    "what", "did", "they", "the", "about",
-    "is", "are", "a", "an", "to", "of",
-    "in", "on", "for", "was", "were",
-    "who", "when", "where", "how",
-    "do", "does", "did", "and"
-}
 
-def extract_keywords(text):
-   text = text.lower()
-   words = re.findall(r'\b\w+\b', text)
-   keywords = [word 
-               for word in words 
-               if word not in STOP_WORDS]
-   return keywords
 
-def calculate_keyword_frequency(chunk, question):
+# ---------------------------------------------------------
+# LOAD CHUNKS
+# ---------------------------------------------------------
 
-    question_words = extract_keywords(question)
+def load_chunks():
 
-    chunk_text = chunk["text"].lower()
-
-    score = 0
-
-    # 1. Individual keyword matches
-    for word in question_words:
-        if word in chunk_text:
-            score += 1
-
-    # 2. Exact phrase match
-    question_clean = " ".join(question_words)
-
-    if question_clean in chunk_text:
-        score += 3
-
-    return score
-def find_best_entry(question, entries):
-
-    question_keywords = extract_keywords(question)
-
-    best_entry = None
-    best_score = 0
-
-    for entry in entries:
-
-        entry_words = set(
-            re.findall(
-                r"\b\w+\b",
-                entry["text"].lower()
-            )
+    if not os.path.exists("chunks.json"):
+        raise FileNotFoundError(
+            "chunks.json was not found."
         )
+
+    with open(
+        "chunks.json",
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        return json.load(file)
+
+
+# ---------------------------------------------------------
+# FIND TOP 3 RELEVANT CHUNKS
+# ---------------------------------------------------------
+
+def find_relevant_chunks(question, chunks):
+
+    question_words = question.lower().split()
+
+    scored_chunks = []
+
+    for chunk in chunks:
+
+        chunk_text = chunk.get("text", "").lower()
+
+        if not chunk_text:
+            continue
 
         score = 0
 
-        for keyword in question_keywords:
+        for word in question_words:
 
-            if keyword in entry_words:
-                score += 1
+            best_word_score = 0
 
-        if score > best_score:
-            best_score = score
-            best_entry = entry
+            for text_word in chunk_text.split():
 
-    return best_entry
-def ask_question(question):
-    with open("chunks.json", "r", encoding="utf-8") as file:
-        chunks = json.load(file)
+                similarity = fuzz.ratio(
+                    word,
+                    text_word
+                )
 
+                if similarity > best_word_score:
+                    best_word_score = similarity
 
-    
-    question_lower = question.lower()
+            score += best_word_score
 
-
-    if (
-        "action item" in question_lower
-        or "actions items" in question_lower
-        or "tasks" in question_lower
-        or "things to do" in question_lower
-    ):
-        action_items = meeting_analysis.get("action_items", [])
-        if not action_items:
-            return {
-                "type": "action_items",
-                "answer": []
+        scored_chunks.append(
+            {
+                "chunk": chunk,
+                "score": score
             }
-     
-
-        return {
-            "type": "action_items",
-            "answer": action_items
-        }
-
-            
-    if "decision" in question_lower:
-        decisions = meeting_analysis.get("decisions", [])
-
-        if not decisions:
-            return {
-                "type": "decisions",
-                "answer": []
-            }
-
-        return {
-            "type": "decisions",
-            "answer": decisions
-        }
-
-    # -----------------------------------
-    # NEXT STEPS
-    # -----------------------------------
-
-    if "next step" in question_lower:
-        next_steps = meeting_analysis.get("next_steps", [])
-
-        if not next_steps:
-            return {
-                "type": "next_steps",
-                "answer": []
-            }
-
-        return {
-            "type": "next_steps",
-            "answer": next_steps
-        }
-
-    results = []
-    for chunk in chunks:
-
-        score = calculate_keyword_frequency(
-            chunk,
-            question
         )
 
-        results.append({
-            "score": score,
-            "chunk": chunk
-        })
+    scored_chunks.sort(
+        key=lambda item: item["score"],
+        reverse=True
+    )
 
-    results.sort(key=lambda x: x["score"], reverse=True)
-    top_chunks = results[:3]
-    relevant_entries = []
+    return [
+        item["chunk"]
+        for item in scored_chunks[:3]
+    ]
 
-    for result in top_chunks:
-        relevant_entries.extend(
-            result["chunk"]["entries"]
+
+# ---------------------------------------------------------
+# ASK LLM
+# ---------------------------------------------------------
+
+def ask_meeting(question ,history=None):
+    history_text = ""
+
+    if history:
+        if history:
+            history = history[-10:]
+        for message in history:
+            history_text += (
+                f"{message['role']}: "
+                f"{message['content']}\n"
+            )
+    chunks = load_chunks()
+
+    if not chunks:
+
+        return {
+            "answer": "No meeting information is available.",
+            "evidence": []
+        }
+
+    relevant_chunks = find_relevant_chunks(
+        question,
+        chunks
+    )
+
+    context_parts = []
+
+    for chunk in relevant_chunks:
+
+        context_parts.append(
+            f"""
+CHUNK {chunk.get("chunk_id")}
+
+TIME:
+{chunk.get("start")} - {chunk.get("end")}
+
+TRANSCRIPT:
+{chunk.get("text")}
+"""
         )
-    context = "\n\n".join(
-        result["chunk"]["text"]
-        for result in top_chunks
-    )    
+
+    context = "\n".join(context_parts)
+
     prompt = f"""
-    You are an AI meeting assistant.
+You are a professional AI meeting assistant.
 
-    Your job is to answer questions about the meeting using ONLY the provided
-    meeting transcript.
+Answer the user's question using ONLY the
+meeting transcript chunks provided below.
+The conversation history is provided so you can understand
+references such as "it", "that", "they", "this issue", etc.
+IMPORTANT RULES:
 
-    IMPORTANT RULES:
+1. Use only information contained in the provided chunks.
+2. Never invent information.
+3. Never use outside knowledge.
+4. Understand the meaning of the user's question.
+5. Correct obvious spelling mistakes internally.
+   For example, "secuirty" may mean "security".
+6. Do not mention spelling corrections unless necessary.
+7. Combine information from multiple chunks when necessary.
+8. If the provided chunks do not contain enough information,
+   clearly say that the information was not found.
+9. Do not claim that information is missing if the provided
+   chunks actually contain relevant information.
+10. Give a concise but complete answer.
+11. Evidence must come directly from the provided chunks.
+12. Return ONLY valid JSON.
+13. Do not use markdown.
+14. Do not add explanations outside the JSON.
 
-    1. Never invent information.
-    2. Never assume something happened unless the transcript supports it.
-    3. If the transcript does not contain enough information to answer the question,
-    say:
-    "I couldn't find that information in the meeting."
-    4. Distinguish between:
-    - Discussion: something people talked about.
-    - Decision: something the participants agreed to do or accepted.
-    - Action item: a specific task someone is expected to perform.
-    - Next step: something that should happen after the meeting.
-    5. A statement is an action item only when the transcript indicates that
-    someone is expected to do something.
-    6. Do not turn general discussion into an action item.
-    7. Do not invent an assignee or deadline.
-    8. If the transcript contains multiple relevant points, include them.
-    9. Evidence must be copied exactly from the provided transcript.
-    10. Do not add quotation marks around the evidence.
-    11. The evidence must come from one transcript entry.
-    12. Return only valid JSON.
-    An action item must represent a specific task that someone is expected
-    to perform.
+Return exactly:
 
-    Do NOT classify these as action items:
-    - general discussion
-    - suggestions
-    - ideas
-    - proposals
-    - decisions without a specific task
-    - statements describing what the team discussed
+{{
+    "answer": "...",
+    "evidence": [
+        {{
+            "chunk_id": "...",
+            "start": "...",
+            "end": "...",
+            "text": "..."
+        }}
+    ]
+}}
 
-    Only call something an action item when the transcript supports an actual
-    task or responsibility.
-    Return this structure:
+CONVERSATION HISTORY:
 
-    {{
-        "answer": "Your concise answer.",
-        "evidence": "Exact supporting sentence from the transcript."
-    }}
+{history_text}
+USER QUESTION:
 
-    If no relevant information exists:
+{question}
 
-    {{
-        "answer": "I couldn't find that information in the meeting.",
-        "evidence": ""
-    }}
+RELEVANT MEETING CHUNKS:
 
-    User question:
-    {question}
+{context}
+"""
 
-    Relevant meeting transcript:
-    {context}
-    """
+    print("\nSending top 3 relevant chunks to Qwen...")
 
     response = client.chat.completions.create(
+
         model="qwen3.5-4b-32k-fast",
+
         messages=[
             {
                 "role": "user",
                 "content": prompt
             }
         ],
-        max_tokens=1000
 
+        max_tokens=2000
     )
+
     result = response.choices[0].message.content
 
+    if not result:
+
+        raise RuntimeError(
+            "Qwen returned an empty response."
+        )
+
     result = result.strip()
+
+    # Remove markdown fences if Qwen adds them
 
     if result.startswith("```json"):
         result = result[7:]
 
-    if result.startswith("```"):
+    elif result.startswith("```"):
         result = result[3:]
 
     if result.endswith("```"):
         result = result[:-3]
 
     result = result.strip()
-    # print("\nRAW LLM RESPONSE:")
-    # print(result)
-    # print("\nEND RAW RESPONSE\n")
-    data = json.loads(result)
 
-    ai_answer = data["answer"]
-    evidence = data["evidence"]
+    try:
 
-    evidence_entry = None
+        return json.loads(result)
 
-    for entry in relevant_entries:
-        if evidence.strip() in entry["text"].strip():
-            evidence_entry = entry
-            break
+    except json.JSONDecodeError as error:
+
+        print("\nInvalid JSON from Qwen:")
+        print(result)
+
+        with open(
+            "qa_raw.txt",
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            file.write(result)
+
+        raise RuntimeError(
+            f"Qwen returned invalid JSON: {error}"
+        )
 
 
-    timestamp=None
-    if evidence_entry:
-        timestamp = evidence_entry["start"]
+# ---------------------------------------------------------
+# TERMINAL TEST
+# ---------------------------------------------------------
 
+if __name__ == "__main__":
 
-    return {
-        "type ":"answer",
-        "answer": ai_answer,
-        "evidence": evidence,
-        "timestamp": timestamp
-    }
+    question = input(
+        "Ask about the meeting: "
+    )
+
+    result = ask_meeting(question)
+
+    print("\nAI ANSWER:")
+    print(result.get("answer", ""))
+
+    print("\nEVIDENCE:")
+
+    for evidence in result.get(
+        "evidence",
+        []
+    ):
+
+        print(
+            f'[{evidence.get("start")} - '
+            f'{evidence.get("end")}] '
+            f'{evidence.get("text")}'
+        )

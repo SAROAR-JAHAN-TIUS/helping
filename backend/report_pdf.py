@@ -14,155 +14,105 @@ from reportlab.platypus import (
     PageBreak,
 )
 
-
-INPUT_FILE = "meeting_analysis.json"
-OUTPUT_FILE = "meeting_report.pdf"
-
-
-
-
-with open(INPUT_FILE, "r", encoding="utf-8") as file:
-    analysis = json.load(file)
+def generate_report():
+    INPUT_FILE = "meeting_analysis.json"
+    OUTPUT_FILE = "meeting_report.pdf"
 
 
 
 
-doc = SimpleDocTemplate(
-    OUTPUT_FILE,
-    pagesize=A4,
-    rightMargin=18 * mm,
-    leftMargin=18 * mm,
-    topMargin=18 * mm,
-    bottomMargin=18 * mm,
-)
-
-
-styles = getSampleStyleSheet()
-
-title_style = ParagraphStyle(
-    "Title",
-    parent=styles["Title"],
-    alignment=TA_CENTER,
-    fontSize=22,
-    spaceAfter=10,
-)
-
-section_style = ParagraphStyle(
-    "Section",
-    parent=styles["Heading2"],
-    fontSize=15,
-    spaceBefore=14,
-    spaceAfter=8,
-)
-
-subsection_style = ParagraphStyle(
-    "Subsection",
-    parent=styles["Heading3"],
-    fontSize=11,
-    spaceBefore=8,
-    spaceAfter=4,
-)
-
-body_style = ParagraphStyle(
-    "Body",
-    parent=styles["BodyText"],
-    fontSize=10,
-    leading=15,
-    spaceAfter=6,
-)
-
-small_style = ParagraphStyle(
-    "Small",
-    parent=styles["BodyText"],
-    fontSize=8,
-    leading=11,
-)
+    with open(INPUT_FILE, "r", encoding="utf-8") as file:
+        analysis = json.load(file)
 
 
 
-story = []
 
-
-story.append(
-    Paragraph(
-        "Meeting Report",
-        title_style
+    doc = SimpleDocTemplate(
+        OUTPUT_FILE,
+        pagesize=A4,
+        rightMargin=18 * mm,
+        leftMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
     )
-)
 
-story.append(
-    Paragraph(
-        "AI-generated meeting analysis",
-        small_style
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "Title",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        fontSize=22,
+        spaceAfter=10,
     )
-)
 
-story.append(Spacer(1, 15))
-
-
-
-story.append(
-    Paragraph(
-        "Executive Summary",
-        section_style
+    section_style = ParagraphStyle(
+        "Section",
+        parent=styles["Heading2"],
+        fontSize=15,
+        spaceBefore=14,
+        spaceAfter=8,
     )
-)
 
-summary = analysis.get("summary", "")
-
-story.append(
-    Paragraph(
-        summary,
-        body_style
+    subsection_style = ParagraphStyle(
+        "Subsection",
+        parent=styles["Heading3"],
+        fontSize=11,
+        spaceBefore=8,
+        spaceAfter=4,
     )
-)
 
-
-
-
-story.append(
-    Paragraph(
-        "Key Discussions",
-        section_style
+    body_style = ParagraphStyle(
+        "Body",
+        parent=styles["BodyText"],
+        fontSize=10,
+        leading=15,
+        spaceAfter=6,
     )
-)
 
-discussions = analysis.get("key_discussions", [])
+    small_style = ParagraphStyle(
+        "Small",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=11,
+    )
 
-if discussions:
 
-    for discussion in discussions:
 
-        topic = discussion.get("topic", "")
-        text = discussion.get("discussion", "")
-        timestamp = discussion.get("timestamp", "")
+    story = []
 
-        story.append(
-            Paragraph(
-                topic,
-                subsection_style
-            )
-        )
-
-        story.append(
-            Paragraph(
-                text,
-                body_style
-            )
-        )
-
-        story.append(
-            Paragraph(
-                f"<b>Timestamp:</b> {timestamp}",
-                small_style
-            )
-        )
-
-else:
 
     story.append(
         Paragraph(
-            "No key discussions were identified.",
+            "Meeting Report",
+            title_style
+        )
+    )
+
+    story.append(
+        Paragraph(
+            "AI-generated meeting analysis",
+            small_style
+        )
+    )
+
+    story.append(Spacer(1, 15))
+
+
+
+    story.append(
+        Paragraph(
+            "Executive Summary",
+            section_style
+        )
+    )
+
+    summary = analysis.get("summary", "")
+
+    story.append(
+        Paragraph(
+            summary,
             body_style
         )
     )
@@ -170,225 +120,275 @@ else:
 
 
 
-story.append(
-    Paragraph(
-        "Decisions",
-        section_style
+    story.append(
+        Paragraph(
+            "Key Discussions",
+            section_style
+        )
     )
-)
 
-decisions = analysis.get("decisions", [])
+    discussions = analysis.get("key_discussions", [])
 
-if decisions:
+    if discussions:
 
-    data = [
-        [
-            Paragraph("<b>Decision</b>", small_style),
-            Paragraph("<b>Speaker</b>", small_style),
-            Paragraph("<b>Time</b>", small_style),
+        for discussion in discussions:
+
+            topic = discussion.get("topic", "")
+            text = discussion.get("discussion", "")
+            timestamp = discussion.get("timestamp", "")
+
+            story.append(
+                Paragraph(
+                    topic,
+                    subsection_style
+                )
+            )
+
+            story.append(
+                Paragraph(
+                    text,
+                    body_style
+                )
+            )
+
+            story.append(
+                Paragraph(
+                    f"<b>Timestamp:</b> {timestamp}",
+                    small_style
+                )
+            )
+
+    else:
+
+        story.append(
+            Paragraph(
+                "No key discussions were identified.",
+                body_style
+            )
+        )
+
+
+
+
+    story.append(
+        Paragraph(
+            "Decisions",
+            section_style
+        )
+    )
+
+    decisions = analysis.get("decisions", [])
+
+    if decisions:
+
+        data = [
+            [
+                Paragraph("<b>Decision</b>", small_style),
+                Paragraph("<b>Speaker</b>", small_style),
+                Paragraph("<b>Time</b>", small_style),
+            ]
         ]
-    ]
 
-    for item in decisions:
+        for item in decisions:
 
-        data.append(
-            [
-                Paragraph(
-                    item.get("decision", ""),
-                    small_style
-                ),
-                Paragraph(
-                    item.get("speaker", ""),
-                    small_style
-                ),
-                Paragraph(
-                    item.get("timestamp", ""),
-                    small_style
-                ),
-            ]
+            data.append(
+                [
+                    Paragraph(
+                        item.get("decision", ""),
+                        small_style
+                    ),
+                    Paragraph(
+                        item.get("speaker", ""),
+                        small_style
+                    ),
+                    Paragraph(
+                        item.get("timestamp", ""),
+                        small_style
+                    ),
+                ]
+            )
+
+        table = Table(
+            data,
+            colWidths=[
+                105 * mm,
+                35 * mm,
+                20 * mm,
+            ],
+            repeatRows=1,
         )
 
-    table = Table(
-        data,
-        colWidths=[
-            105 * mm,
-            35 * mm,
-            20 * mm,
-        ],
-        repeatRows=1,
-    )
-
-    table.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]
+        table.setStyle(
+            TableStyle(
+                [
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
         )
-    )
 
-    story.append(table)
+        story.append(table)
 
-else:
+    else:
+
+        story.append(
+            Paragraph(
+                "No decisions were identified.",
+                body_style
+            )
+        )
+
 
     story.append(
         Paragraph(
-            "No decisions were identified.",
-            body_style
+            "Action Items",
+            section_style
         )
     )
 
+    actions = analysis.get("action_items", [])
 
-story.append(
-    Paragraph(
-        "Action Items",
-        section_style
-    )
-)
+    if actions:
 
-actions = analysis.get("action_items", [])
-
-if actions:
-
-    data = [
-        [
-            Paragraph("<b>Task</b>", small_style),
-            Paragraph("<b>Assignee</b>", small_style),
-            Paragraph("<b>Deadline</b>", small_style),
-            Paragraph("<b>Time</b>", small_style),
+        data = [
+            [
+                Paragraph("<b>Task</b>", small_style),
+                Paragraph("<b>Assignee</b>", small_style),
+                Paragraph("<b>Deadline</b>", small_style),
+                Paragraph("<b>Time</b>", small_style),
+            ]
         ]
-    ]
 
-    for item in actions:
+        for item in actions:
 
-        assignee = item.get("assignee") or "Not specified"
-        deadline = item.get("deadline") or "Not specified"
+            assignee = item.get("assignee") or "Not specified"
+            deadline = item.get("deadline") or "Not specified"
 
-        data.append(
-            [
-                Paragraph(
-                    item.get("task", ""),
-                    small_style
-                ),
-                Paragraph(
-                    assignee,
-                    small_style
-                ),
-                Paragraph(
-                    deadline,
-                    small_style
-                ),
-                Paragraph(
-                    item.get("timestamp", ""),
-                    small_style
-                ),
-            ]
+            data.append(
+                [
+                    Paragraph(
+                        item.get("task", ""),
+                        small_style
+                    ),
+                    Paragraph(
+                        assignee,
+                        small_style
+                    ),
+                    Paragraph(
+                        deadline,
+                        small_style
+                    ),
+                    Paragraph(
+                        item.get("timestamp", ""),
+                        small_style
+                    ),
+                ]
+            )
+
+        table = Table(
+            data,
+            colWidths=[
+                75 * mm,
+                35 * mm,
+                35 * mm,
+                15 * mm,
+            ],
+            repeatRows=1,
         )
 
-    table = Table(
-        data,
-        colWidths=[
-            75 * mm,
-            35 * mm,
-            35 * mm,
-            15 * mm,
-        ],
-        repeatRows=1,
-    )
-
-    table.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ]
+        table.setStyle(
+            TableStyle(
+                [
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
         )
-    )
 
-    story.append(table)
+        story.append(table)
 
-else:
-
-    story.append(
-        Paragraph(
-            "No action items were identified.",
-            body_style
-        )
-    )
-
-
-story.append(
-    Paragraph(
-        "Next Steps",
-        section_style
-    )
-)
-
-next_steps = analysis.get("next_steps", [])
-
-if next_steps:
-
-    for index, step in enumerate(next_steps, start=1):
+    else:
 
         story.append(
             Paragraph(
-                f"{index}. {step}",
+                "No action items were identified.",
                 body_style
             )
         )
 
-else:
 
     story.append(
         Paragraph(
-            "No next steps were identified.",
-            body_style
+            "Next Steps",
+            section_style
         )
     )
 
+    next_steps = analysis.get("next_steps", [])
 
+    if next_steps:
 
-story.append(
-    Paragraph(
-        "Important Points",
-        section_style
-    )
-)
+        for index, step in enumerate(next_steps, start=1):
 
-important_points = analysis.get("important_points", [])
+            story.append(
+                Paragraph(
+                    f"{index}. {step}",
+                    body_style
+                )
+            )
 
-if important_points:
-
-    for item in important_points:
+    else:
 
         story.append(
             Paragraph(
-                f"<b>{item.get('timestamp', '')}</b> "
-                f"{item.get('point', '')}",
+                "No next steps were identified.",
                 body_style
             )
         )
 
-else:
+
 
     story.append(
         Paragraph(
-            "No additional important points were identified.",
-            body_style
+            "Important Points",
+            section_style
         )
     )
 
+    important_points = analysis.get("important_points", [])
 
-doc.build(story)
+    if important_points:
 
-print(f"Meeting report created: {OUTPUT_FILE}")
+        for item in important_points:
+
+            story.append(
+                Paragraph(
+                    f"<b>{item.get('timestamp', '')}</b> "
+                    f"{item.get('point', '')}",
+                    body_style
+                )
+            )
+
+    else:
+
+        story.append(
+            Paragraph(
+                "No additional important points were identified.",
+                body_style
+            )
+        )
+
+
+    doc.build(story)
+
+    print(f"Meeting report created: {OUTPUT_FILE}")

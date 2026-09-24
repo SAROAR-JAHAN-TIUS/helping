@@ -31,5 +31,4 @@ class MeetingAnalysis(BaseModel):
     key_discussions: list[KeyDiscussion]
     decisions: list[Decision]
     action_items: list[ActionItem]
-    next_steps: list[str]
     important_points: list[ImportantPoint]
