@@ -15,3 +15,5 @@ google-auth-oauthlib
 google-auth-httplib2
 pillow
 websockets
+psycopg2-binary
+psycopg[binary]
