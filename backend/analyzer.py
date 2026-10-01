@@ -1,33 +1,34 @@
-import json 
+import json
 import os
 
 from dotenv import load_dotenv
 from openai import OpenAI
 
 from models import MeetingAnalysis
+from storage import get_meeting_file
 
 load_dotenv()
 
 API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
 
-def analyze_meeting():
+
+def analyze_meeting(meeting_id: str):
     if not API_KEY:
         raise RuntimeError("ASSEMBLYAI_API_KEY is not set.")
-    input_file = "transcript.json" 
-    output_file = "meeting_analysis.json"
+
+    input_file = get_meeting_file(meeting_id, "transcript.json")
+    output_file = get_meeting_file(meeting_id, "meeting_analysis.json")
+
     client = OpenAI(
         api_key=API_KEY,
         base_url="https://llm-gateway.assemblyai.com/v1"
     )
+
     if not os.path.exists(input_file):
-        raise FileNotFoundError(
-            f"{input_file} was not found."
-        )
+        raise FileNotFoundError(f"{input_file} was not found.")
 
     with open(input_file, "r", encoding="utf-8") as file:
         transcript = json.load(file)
-
-
 
     if not transcript:
         raise ValueError("transcript.json is empty.")
@@ -35,7 +36,6 @@ def analyze_meeting():
     conversation_parts = []
 
     for item in transcript:
-
         speaker = item.get("speaker", "UNKNOWN")
         start = item.get("start", "")
         end = item.get("end", "")
@@ -101,28 +101,24 @@ def analyze_meeting():
     {conversation}
 
     """
+
     print("Sending transcript to Qwen...")
 
     response = client.chat.completions.create(
         model="qwen3.5-4b-32k-fast",
-
         messages=[
             {
                 "role": "user",
                 "content": prompt
             }
         ],
-
         max_tokens=3000
     )
 
-
     result = response.choices[0].message.content
-
 
     if not result:
         raise RuntimeError("Qwen returned an empty response.")
-
 
     print("\nAI response:")
     print(result)
@@ -130,35 +126,25 @@ def analyze_meeting():
 
     if result.startswith("```json"):
         result = result[7:]
-
     elif result.startswith("```"):
         result = result[3:]
 
-
     if result.endswith("```"):
         result = result[:-3]
-
 
     result = result.strip()
 
     try:
         raw_analysis = json.loads(result)
-
         validated_analysis = MeetingAnalysis.model_validate(raw_analysis)
-
         analysis = validated_analysis.model_dump()
 
     except json.JSONDecodeError as error:
-
         print("\nQwen did not return valid JSON.")
         print("JSON error:", error)
 
-        # Save the raw response so we can inspect it.
-        with open(
-            "analysis_raw.txt",
-            "w",
-            encoding="utf-8"
-        ) as file:
+        raw_file = get_meeting_file(meeting_id, "analysis_raw.txt")
+        with open(raw_file, "w", encoding="utf-8") as file:
             file.write(result)
 
         raise RuntimeError(
@@ -166,20 +152,8 @@ def analyze_meeting():
             "Raw response saved to analysis_raw.txt"
         )
 
-    with open(
-        output_file,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            analysis,
-            file,
-            indent=4,
-            ensure_ascii=False
-        )
-
+    with open(output_file, "w", encoding="utf-8") as file:
+        json.dump(analysis, file, indent=4, ensure_ascii=False)
 
     print(f"Saved to: {output_file}")
-if __name__ == "__main__":
-    analyze_meeting()
+    return analysis

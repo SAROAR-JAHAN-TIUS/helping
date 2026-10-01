@@ -5,125 +5,77 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from rapidfuzz import fuzz
 
+from storage import get_meeting_file
+
 load_dotenv()
 
 API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
 
-if not API_KEY:
-    raise RuntimeError("ASSEMBLYAI_API_KEY is not set.")
 
-client = OpenAI(
-    api_key=API_KEY,
-    base_url="https://llm-gateway.assemblyai.com/v1"
-)
+def load_chunks(meeting_id: str):
+    chunks_file = get_meeting_file(meeting_id, "chunks.json")
 
+    if not os.path.exists(chunks_file):
+        raise FileNotFoundError(f"chunks.json was not found for meeting {meeting_id}.")
 
-# ---------------------------------------------------------
-# LOAD CHUNKS
-# ---------------------------------------------------------
-
-def load_chunks():
-
-    if not os.path.exists("chunks.json"):
-        raise FileNotFoundError(
-            "chunks.json was not found."
-        )
-
-    with open(
-        "chunks.json",
-        "r",
-        encoding="utf-8"
-    ) as file:
-
+    with open(chunks_file, "r", encoding="utf-8") as file:
         return json.load(file)
 
 
-# ---------------------------------------------------------
-# FIND TOP 3 RELEVANT CHUNKS
-# ---------------------------------------------------------
-
 def find_relevant_chunks(question, chunks):
-
     question_words = question.lower().split()
-
     scored_chunks = []
 
     for chunk in chunks:
-
         chunk_text = chunk.get("text", "").lower()
-
         if not chunk_text:
             continue
 
         score = 0
-
         for word in question_words:
-
             best_word_score = 0
-
             for text_word in chunk_text.split():
-
-                similarity = fuzz.ratio(
-                    word,
-                    text_word
-                )
-
+                similarity = fuzz.ratio(word, text_word)
                 if similarity > best_word_score:
                     best_word_score = similarity
-
             score += best_word_score
 
-        scored_chunks.append(
-            {
-                "chunk": chunk,
-                "score": score
-            }
-        )
+        scored_chunks.append({"chunk": chunk, "score": score})
 
-    scored_chunks.sort(
-        key=lambda item: item["score"],
-        reverse=True
+    scored_chunks.sort(key=lambda item: item["score"], reverse=True)
+    return [item["chunk"] for item in scored_chunks[:3]]
+
+
+def ask_meeting(meeting_id: str, question: str, history=None):
+    if not API_KEY:
+        raise RuntimeError("ASSEMBLYAI_API_KEY is not set.")
+
+    client = OpenAI(
+        api_key=API_KEY,
+        base_url="https://llm-gateway.assemblyai.com/v1"
     )
 
-    return [
-        item["chunk"]
-        for item in scored_chunks[:3]
-    ]
-
-
-# ---------------------------------------------------------
-# ASK LLM
-# ---------------------------------------------------------
-
-def ask_meeting(question ,history=None):
     history_text = ""
-
     if history:
-        if history:
-            history = history[-10:]
+        history = history[-10:]
         for message in history:
             history_text += (
                 f"{message['role']}: "
                 f"{message['content']}\n"
             )
-    chunks = load_chunks()
+
+    chunks = load_chunks(meeting_id)
 
     if not chunks:
-
         return {
             "answer": "No meeting information is available.",
             "evidence": []
         }
 
-    relevant_chunks = find_relevant_chunks(
-        question,
-        chunks
-    )
+    relevant_chunks = find_relevant_chunks(question, chunks)
 
     context_parts = []
-
     for chunk in relevant_chunks:
-
         context_parts.append(
             f"""
 CHUNK {chunk.get("chunk_id")}
@@ -194,88 +146,35 @@ RELEVANT MEETING CHUNKS:
     print("\nSending top 3 relevant chunks to Qwen...")
 
     response = client.chat.completions.create(
-
         model="qwen3.5-4b-32k-fast",
-
-        messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-
+        messages=[{"role": "user", "content": prompt}],
         max_tokens=2000
     )
 
     result = response.choices[0].message.content
 
     if not result:
-
-        raise RuntimeError(
-            "Qwen returned an empty response."
-        )
+        raise RuntimeError("Qwen returned an empty response.")
 
     result = result.strip()
 
-    # Remove markdown fences if Qwen adds them
-
     if result.startswith("```json"):
         result = result[7:]
-
     elif result.startswith("```"):
         result = result[3:]
-
     if result.endswith("```"):
         result = result[:-3]
 
     result = result.strip()
 
     try:
-
         return json.loads(result)
-
     except json.JSONDecodeError as error:
-
         print("\nInvalid JSON from Qwen:")
         print(result)
 
-        with open(
-            "qa_raw.txt",
-            "w",
-            encoding="utf-8"
-        ) as file:
-
+        raw_file = get_meeting_file(meeting_id, "qa_raw.txt")
+        with open(raw_file, "w", encoding="utf-8") as file:
             file.write(result)
 
-        raise RuntimeError(
-            f"Qwen returned invalid JSON: {error}"
-        )
-
-
-# ---------------------------------------------------------
-# TERMINAL TEST
-# ---------------------------------------------------------
-
-if __name__ == "__main__":
-
-    question = input(
-        "Ask about the meeting: "
-    )
-
-    result = ask_meeting(question)
-
-    print("\nAI ANSWER:")
-    print(result.get("answer", ""))
-
-    print("\nEVIDENCE:")
-
-    for evidence in result.get(
-        "evidence",
-        []
-    ):
-
-        print(
-            f'[{evidence.get("start")} - '
-            f'{evidence.get("end")}] '
-            f'{evidence.get("text")}'
-        )
+        raise RuntimeError(f"Qwen returned invalid JSON: {error}")

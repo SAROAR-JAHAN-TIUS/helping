@@ -1,4 +1,5 @@
 import json
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -8,36 +9,26 @@ from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
     Spacer,
-    PageBreak
 )
 
+from storage import get_meeting_file
 
-# -----------------------------
-# Load transcript
-# -----------------------------
-def generate_full_conversation():
-    with open("transcript.json", "r", encoding="utf-8") as file:
+
+def generate_full_conversation(meeting_id: str):
+    input_file = get_meeting_file(meeting_id, "transcript.json")
+    output_file = get_meeting_file(meeting_id, "full_conversation.pdf")
+
+    with open(input_file, "r", encoding="utf-8") as file:
         transcript = json.load(file)
 
-
-    # -----------------------------
-    # PDF setup
-    # -----------------------------
-    output_file = "full_conversation.pdf"
-
     doc = SimpleDocTemplate(
-        output_file,
+        str(output_file),
         pagesize=A4,
         rightMargin=18 * mm,
         leftMargin=18 * mm,
         topMargin=18 * mm,
         bottomMargin=18 * mm,
     )
-
-
-    # -----------------------------
-    # Styles
-    # -----------------------------
 
     styles = getSampleStyleSheet()
 
@@ -84,63 +75,20 @@ def generate_full_conversation():
         spaceAfter=5 * mm,
     )
 
-
-    # -----------------------------
-    # Build PDF
-    # -----------------------------
-
     story = []
-
-    story.append(
-        Paragraph(
-            "Full Meeting Conversation",
-            title_style
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "Complete chronological transcript",
-            subtitle_style
-        )
-    )
-
+    story.append(Paragraph("Full Meeting Conversation", title_style))
+    story.append(Paragraph("Complete chronological transcript", subtitle_style))
     story.append(Spacer(1, 4 * mm))
 
-
     for entry in transcript:
-
         speaker = entry.get("speaker", "Unknown Speaker")
         start = entry.get("start", "")
         end = entry.get("end", "")
         text = entry.get("text", "")
 
-        story.append(
-            Paragraph(
-                speaker,
-                speaker_style
-            )
-        )
-
-        story.append(
-            Paragraph(
-                f"{start} - {end}",
-                timestamp_style
-            )
-        )
-
-        story.append(
-            Paragraph(
-                text,
-                conversation_style
-            )
-        )
-
-
-    # -----------------------------
-    # Generate
-    # -----------------------------
+        story.append(Paragraph(speaker, speaker_style))
+        story.append(Paragraph(f"{start} - {end}", timestamp_style))
+        story.append(Paragraph(text, conversation_style))
 
     doc.build(story)
-
     print(f"PDF created: {output_file}")

@@ -19,7 +19,7 @@ from assemblyai.streaming.v3 import (
 API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
 if not API_KEY:
     raise RuntimeError("ASSEMBLYAI_API_KEY environment variable is not set.")
-DEVICE = "bluez_output.F4:B6:2D:58:A9:27.monitor"
+DEVICE = "alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__Speaker__sink.monitor"
 def on_begin(client, event: BeginEvent):
     print(f"Connected. Session ID: {event.id}")
     print("Listening to system audio...\n")
@@ -76,7 +76,7 @@ def start_transcription():
             sample_rate=16000,
             speech_model="universal-3-5-pro",
             speaker_labels=True,
-            max_speakers=3,
+            max_speakers=10,
             language_code="en",
         )
     )

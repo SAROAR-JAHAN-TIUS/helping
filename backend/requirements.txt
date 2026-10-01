@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pydantic-settings
+python-dotenv
+openai
+assemblyai
+rapidfuzz
+dateparser
+reportlab
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+pillow
+websockets

@@ -1,0 +1,580 @@
+Sakkhat: Meeting-AI App Readiness Roadmap
+
+You are not starting from zero. You already have the core pieces. The problem now is mostly integration and meeting-state logic, especially around multi-participant WebRTC and ending a meeting cleanly. Humanity has once again managed to make "three people talking" harder than it sounds.
+
+1. What you have already built
+Backend
+FastAPI backend
+SQLite database
+SQLAlchemy models
+User
+Meeting
+Participant
+Meeting creation
+Meeting joining
+Participant records:
+meeting_id
+user_id
+joined_at
+left_at
+Meeting status handling
+WebSocket signaling
+WebRTC signaling flow
+offer
+answer
+ICE candidates
+Meeting ending endpoint:
+/meetings/{meeting_id}/end
+Leaving endpoint:
+/meetings/{meeting_id}/leave
+Meeting processing pipeline
+AssemblyAI transcription
+Speaker diarization
+Qwen meeting analysis
+Meeting summary generation
+Key discussions
+Decisions
+Action items
+Next steps
+Important points
+Calendar-event extraction
+Meeting report PDF
+Full conversation PDF
+
+Your backend logs prove that the processing pipeline works:
+
+Processing meeting...
+Analyzing meeting...
+Sending transcript to Qwen...
+AI response...
+Extracting calendar events...
+Generating meeting report...
+Generating full conversation PDF...
+Meeting processing complete.
+
+So do not rebuild the backend processing system.
+
+2. What you have already built in frontend
+
+You have:
+
+React application
+Dashboard
+Meeting creation
+Meeting room
+Meeting ID
+User identity
+Camera access
+Microphone access
+Participant display
+Participant count
+WebSocket connection
+WebRTC connection
+Mute button
+Camera button
+Leave button
+End Meeting button
+Participant names
+Video tiles
+Basic multi-participant UI
+Meeting result/processing pages such as your PDF/AskAI stage
+
+You also increased the participant limit from 2 → 10.
+
+3. What is currently broken
+
+These are the things we should treat as bugs, not new features.
+
+A. Multi-participant WebRTC
+
+Current target:
+
+Participant A
+      ↕
+Participant B
+      ↕
+Participant C
+      ↕
+Participant D
+...
+      ↕
+Participant J
+
+Currently:
+
+2 participants can work
+3+ participants have connection problems
+some participants show Connecting...
+sometimes Disconnected
+participant tiles don't reliably establish media
+
+This is the biggest frontend logic problem.
+
+B. Leave button
+
+The Leave button must do:
+
+Click Leave
+     ↓
+Stop local media
+     ↓
+Close peer connections
+     ↓
+Close WebSocket
+     ↓
+POST /meetings/{id}/leave
+     ↓
+Navigate to Dashboard
+
+It must not trigger meeting processing.
+
+C. End Meeting
+
+This is where your previous logic got confused.
+
+Ending a meeting should be:
+
+Host clicks End Meeting
+          ↓
+Tell backend meeting is ended
+          ↓
+Backend stops/finalizes meeting
+          ↓
+All participants receive meeting-ended signal
+          ↓
+Everyone leaves WebRTC
+          ↓
+Everyone leaves WebSocket
+          ↓
+Frontend goes to FINAL/PROCESSING page
+          ↓
+Backend processing finishes
+          ↓
+Results available
+          ↓
+AskAI / PDF / Meeting Summary
+
+The critical point:
+
+End Meeting ≠ Leave Meeting ≠ Process Meeting ≠ Dashboard.
+
+They are separate states.
+
+4. Your meeting state should become very clear
+
+Use something like:
+
+WAITING
+   ↓
+ACTIVE
+   ↓
+ENDING
+   ↓
+PROCESSING
+   ↓
+COMPLETED
+
+And for a participant:
+
+JOINED
+   ↓
+IN_MEETING
+   ↓
+LEFT
+
+This prevents the current mess where clicking End can accidentally trigger processing while the frontend is still sitting inside the meeting room.
+
+5. Your biggest remaining feature: participant → voice mapping
+
+This is what you were trying to solve.
+
+You want:
+
+MD. TIUS
+   ↓
+microphone/audio
+   ↓
+voice stream
+   ↓
+backend
+   ↓
+transcription
+   ↓
+JSON
+
+and:
+
+Saroar Jahan
+   ↓
+microphone/audio
+   ↓
+backend
+   ↓
+transcription
+
+So the final JSON can eventually look like:
+
+[
+    {
+        "speaker": "MD. TIUS",
+        "user_id": "112090273940943342266",
+        "start": "00:00:04",
+        "end": "00:00:09",
+        "text": "Let's discuss the project."
+    },
+    {
+        "speaker": "Saroar Jahan",
+        "user_id": "112850711547232367410",
+        "start": "00:00:10",
+        "end": "00:00:15",
+        "text": "Yes, I have the requirements ready."
+    }
+]
+
+This is different from relying only on AssemblyAI's Speaker A, Speaker B, etc.
+
+Your current AssemblyAI code gives:
+
+{
+    "speaker": "A",
+    "start": "00:00:00",
+    "end": "00:00:05",
+    "text": "..."
+}
+
+The next job is to associate the audio stream with the actual participant.
+
+6. Do NOT mix these two things
+
+You currently have two separate concepts:
+
+Meeting identity
+user_id
+name
+meeting_id
+joined_at
+left_at
+
+Database handles this.
+
+Audio identity
+audio stream
+participant
+voice
+transcript
+timestamp
+
+Audio/WebRTC system handles this.
+
+Eventually they connect:
+
+user_id
+       ↓
+participant
+       ↓
+audio stream
+       ↓
+transcription
+       ↓
+transcript JSON
+
+That is the part we still need to finish properly.
+
+7. Your current system_audio.py
+
+You already have a working prototype:
+
+PulseAudio/PipeWire
+       ↓
+system audio
+       ↓
+FFmpeg
+       ↓
+PCM
+       ↓
+AssemblyAI
+       ↓
+speaker diarization
+       ↓
+transcript.json
+
+And you have:
+
+speaker_labels=True,
+max_speakers=10,
+
+So do not throw this away yet.
+
+It already proves that AssemblyAI can produce speaker-separated transcription.
+
+The remaining problem is:
+
+Speaker A → WHO?
+Speaker B → WHO?
+Speaker C → WHO?
+
+That is the identity-mapping problem.
+
+8. What your final architecture should accomplish
+
+Not rebuild. Just connect what you've already made:
+
+                    SAKKHAT
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+       React                    FastAPI
+          │                         │
+          │                    SQLite
+          │                         │
+          │              ┌──────────┴─────────┐
+          │              │                    │
+          │           Meetings            Participants
+          │
+          │
+     WebRTC Meeting
+          │
+     ┌────┼────┬────┐
+     │    │    │    │
+     A    B    C   ...J
+     │    │    │
+     └────┼────┘
+          │
+       Audio
+          │
+     Transcription
+          │
+      AssemblyAI
+          │
+    Speaker mapping
+          │
+     transcript.json
+          │
+       Qwen AI
+          │
+    ┌─────┼──────────┐
+    │     │          │
+ Summary Decisions  Actions
+    │
+    ├── PDF
+    ├── Calendar
+    └── AskAI
+9. What remains before Sakkhat is MVP-ready
+P0: Must fix
+Meeting functionality
+ 2 participants reliably connect
+ 3 participants reliably connect
+ 4+ participants
+ test up to 10
+ participant joins after meeting starts
+ participant leaves
+ host leaves
+ host ends meeting
+ all clients receive meeting-ended event
+ WebRTC cleanup
+ WebSocket cleanup
+ correct navigation
+Meeting state
+ waiting
+ active
+ ending
+ processing
+ completed
+Participant database
+ user
+ meeting
+ participant
+ joined_at
+ left_at
+Audio
+ system audio prototype
+ AssemblyAI connection
+ diarization
+ transcript JSON
+ participant ↔ audio identity mapping
+ per-meeting transcript storage
+ reliable recording lifecycle
+10. P1: Finish the actual Meeting AI
+
+After the meeting infrastructure is stable:
+
+ transcript
+ Qwen analysis
+ summary
+ discussions
+ decisions
+ action items
+ next steps
+ important points
+ calendar extraction
+ meeting PDF
+ conversation PDF
+ connect results to frontend
+ AskAI uses the correct meeting transcript
+ results stored per meeting_id
+11. P2: Make Sakkhat feel like a real product
+
+Then add:
+
+ proper dashboard meeting history
+ meeting title
+ date/time
+ participants
+ duration
+ processing status
+ summary preview
+ PDF buttons
+ AskAI
+ transcript viewer
+ speaker names
+ timestamps
+ calendar events
+ error states
+ loading states
+12. P3: Security and reliability
+
+Before calling it finished:
+
+ validate meeting IDs
+ validate user permissions
+ only host can end meeting
+ participant can only leave themselves
+ prevent duplicate join records
+ prevent joining ended meetings
+ handle browser refresh
+ handle network disconnect
+ handle microphone permission denial
+ handle camera permission denial
+ handle AssemblyAI failure
+ handle Qwen failure
+ don't overwrite another meeting's transcript
+ store files using meeting_id
+
+For example, stop doing:
+
+transcript.json
+meeting_analysis.json
+meeting_recording.webm
+
+globally.
+
+Eventually use:
+
+meetings/
+    c71a0933/
+        transcript.json
+        meeting_recording.webm
+        meeting_analysis.json
+        extracted_events.json
+        meeting_report.pdf
+        full_conversation.pdf
+
+Otherwise two meetings happening around the same time will eventually start eating each other's files. Computers are very literal creatures.
+
+13. The order we should work in
+
+Do not jump around between all these pieces.
+
+Phase 1
+
+Fix WebRTC multi-participant connection.
+
+A + B
+A + B + C
+A + B + C + D
+...
+A + ... + J
+Phase 2
+
+Fix Leave / End lifecycle.
+
+Leave
+End
+Disconnect
+Cleanup
+Navigation
+Phase 3
+
+Participant identity.
+
+user_id
+   ↓
+participant
+   ↓
+audio stream
+Phase 4
+
+Transcription mapping.
+
+audio
+ ↓
+AssemblyAI
+ ↓
+speaker
+ ↓
+user
+ ↓
+transcript JSON
+Phase 5
+
+Meeting processing.
+
+transcript
+ ↓
+Qwen
+ ↓
+analysis
+ ↓
+PDF
+ ↓
+calendar
+ ↓
+AskAI
+Phase 6
+
+Dashboard + polish.
+
+14. Current Sakkhat status
+Component	Status
+React frontend	Done
+FastAPI backend	Done
+SQLite	Done
+User authentication	Done
+Create meeting	Done
+Join meeting	Done
+Participant DB	Done
+Participant timestamps	Done
+WebSocket	Partially working
+WebRTC 1-to-1	Working/prototype
+WebRTC multi-participant	Broken
+10-person limit	Added
+Camera	Working/prototype
+Microphone	Working/prototype
+Leave	Logic needs fixing
+End Meeting	Logic needs fixing
+Dashboard navigation	Needs fixing
+System audio	Prototype working
+AssemblyAI	Working
+Speaker diarization	Working
+Participant → speaker mapping	Not finished
+Transcript JSON	Working
+Qwen analysis	Working
+Calendar extraction	Working
+Meeting PDF	Working
+Conversation PDF	Working
+AskAI	Built, needs integration
+Per-meeting storage	Not finished
+Final meeting-history dashboard	Not finished
+Error handling	Not finished
+Security/permissions	Not finished
+The important part
+
+You are past the "build everything" stage.
+
+Your remaining core engineering problem is:
+
+Make one meeting behave correctly from Join → WebRTC → Participants → Audio → End → Processing → Results.
+
+Once that lifecycle is solid, Sakkhat stops being a collection of working components and becomes an actual application.
+I have also some unfamiliar python files that i made for test you can delete .
+Make it deployment ready so i can put backend in the cloud and change fetching link in frontend 

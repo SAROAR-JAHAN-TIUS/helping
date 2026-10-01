@@ -1,24 +1,40 @@
 import json
+import os
+
 from dotenv import load_dotenv
 from openai import OpenAI
-import os
+
+from storage import get_meeting_file
+
 load_dotenv()
+
 API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
-def extract_calendar_events():
+
+
+def extract_calendar_events(meeting_id: str):
     if not API_KEY:
         raise RuntimeError("ASSEMBLYAI_API_KEY is not set.")
-    client =OpenAI(
+
+    client = OpenAI(
         api_key=API_KEY,
-        base_url="https://llm-gateway.assemblyai.com/v1")
-    with open ("transcript.json", "r", encoding="utf-8") as f:
+        base_url="https://llm-gateway.assemblyai.com/v1"
+    )
+
+    input_file = get_meeting_file(meeting_id, "transcript.json")
+    output_file = get_meeting_file(meeting_id, "extracted_events.json")
+
+    with open(input_file, "r", encoding="utf-8") as f:
         transcript = json.load(f)
+
     conversation_parts = []
     for entry in transcript:
-        speaker=entry.get("speaker", "Unknown")
-        start=entry.get("start", "")
-        text=entry.get("text", "")
+        speaker = entry.get("speaker", "Unknown")
+        start = entry.get("start", "")
+        text = entry.get("text", "")
         conversation_parts.append(f"[{start}] {speaker}: {text}")
+
     conversation = "\n".join(conversation_parts)
+
     prompt = f"""
     You are a meeting date and time extraction assistant.
 
@@ -51,9 +67,10 @@ def extract_calendar_events():
     13. If no future event is mentioned, return an empty events list.
     14. Include the transcript timestamp where the event was mentioned.
     15. Return ONLY valid JSON.
- 16. If it says lunch time return  start_time: "12:00 PM" as the time.
- 17. If it says dinner time return start_time: "8:00 PM" as the time.
- 18. If it says in morning or breakfast time return start_time: "9:00 AM" as the time.
+    16. If it says lunch time return start_time: "12:00 PM" as the time.
+    17. If it says dinner time return start_time: "8:00 PM" as the time.
+    18. If it says in morning or breakfast time return start_time: "9:00 AM" as the time.
+
     Return this structure:
 
     {{
@@ -79,6 +96,7 @@ def extract_calendar_events():
 
     {conversation}
     """
+
     response = client.chat.completions.create(
         model="qwen3.5-4b-32k-fast",
         messages=[
@@ -89,26 +107,22 @@ def extract_calendar_events():
         ],
         max_tokens=1500
     )
-    result = response.choices[0].message.content
 
+    result = response.choices[0].message.content
     result = result.strip()
 
     if result.startswith("```json"):
         result = result[7:]
-
     if result.startswith("```"):
         result = result[3:]
-
     if result.endswith("```"):
         result = result[:-3]
 
     result = result.strip()
 
     data = json.loads(result)
-    with open("extracted_events.json", "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
-    
-    print ("\nExtracted events saved to extracted_events.json")    
 
-if __name__ == "__main__":
-    extract_calendar_events()
+    print("\nExtracted events saved to", output_file)
+    return data

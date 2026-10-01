@@ -1,13 +1,38 @@
-.venv/
+# Environment
 .env
-credentials.json
-token.json
+*.env.local
+
+# Python
 __pycache__/
-chunks.json
-transcript.json
-meeting_analysis.json
-extracted_events.json
-*.pdf
-.env
-.env.*
-!.env.example
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Database
+*.db
+
+# Generated meeting files
+meetings/
+backend/meetings/
+
+# Generated artifacts (legacy root-level)
+backend/transcript.json
+backend/chunks.json
+backend/meeting_analysis.json
+backend/extracted_events.json
+backend/meeting_report.pdf
+backend/full_conversation.pdf
+backend/meeting_recording.webm
+backend/analysis_raw.txt
+backend/qa_raw.txt
+backend/transcript_*.json
+
+# Google OAuth tokens (sensitive)
+backend/token.json
+backend/credentials.json
+
+# Node
+node_modules/
+dist/
+.DS_Store
